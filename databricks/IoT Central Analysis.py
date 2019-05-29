@@ -128,10 +128,10 @@ display(smoothTelemetryDF)
 
 # MAGIC %md ## Analyze the telemetry further 
 # MAGIC 
-# MAGIC To perform more complex analysis, the following cell continuously writes the streaming data to the filesystem in the cluster. The amount of data stored will continue to grow, so in a production system you should periodically delete or archive old telemetry data.
+# MAGIC To perform more complex analysis, the following cell continuously writes the streaming data to a table in the cluster. The amount of data stored will continue to grow, so in a production system you should periodically delete or archive old telemetry data.
 # MAGIC 
-# MAGIC ###Write streaming data query results to storage
-# MAGIC Writes the final telemetryDF DataFrame to the cluster's filesystem using the *parquet* format. You could choose to write the telemetry to another storage location such as a database or blob store.
+# MAGIC ###Write streaming data query results to a database
+# MAGIC Writes the final telemetryDF DataFrame to a [database table](https://docs.azuredatabricks.net/user-guide/tables.html) in the cluster. You could choose to write the telemetry to another storage location such as an external database or blob store.
 # MAGIC 
 # MAGIC For more information, see [Streaming Data Sources and Sinks](https://docs.azuredatabricks.net/spark/latest/structured-streaming/data-sources.html).
 
@@ -140,10 +140,9 @@ display(smoothTelemetryDF)
 telemetryDF \
     .writeStream \
     .outputMode("append") \
-    .format("parquet") \
-    .option("path", "/telemetrydata") \
-    .option("checkpointLocation", "/checkpoints") \
-    .start()
+    .format("delta") \
+    .option("checkpointLocation", "/delta/events/_checkpoints/etl-from-json") \
+    .table("telemetry")
 
 # COMMAND ----------
 
@@ -154,7 +153,7 @@ telemetryDF \
 # COMMAND ----------
 
 from time import sleep
-sleep(10000) # wait until some telemtry has been written to storage
+sleep(60) # wait until some telemtry has been written to storage
 
 # COMMAND ----------
 
@@ -177,10 +176,10 @@ sleep(10000) # wait until some telemtry has been written to storage
 import matplotlib.pyplot as plt
 
 # Get list of distinct deviceId values
-devicelist = sqlContext.read.parquet("/telemetrydata").select(collect_set('deviceId').alias('deviceId')).first()['deviceId']
+devicelist = spark.table('telemetry').select(collect_set('deviceId').alias('deviceId')).first()['deviceId']
 
 # Pivot and convert to a pandas dataframe
-pdDF = sqlContext.read.parquet("/telemetrydata").groupBy('enqueuedtime').pivot('deviceId').mean('humidity').orderBy('enqueuedtime').withColumn('hour', date_trunc('hour', 'enqueuedtime')).toPandas()
+pdDF = spark.table('telemetry').groupBy('enqueuedtime').pivot('deviceId').mean('humidity').orderBy('enqueuedtime').withColumn('hour', date_trunc('hour', 'enqueuedtime')).toPandas()
 
 # Use the pandas plotting function
 plt.clf()
